@@ -1,0 +1,14 @@
+node_modules
+.output
+.nuxt
+.nitro
+dist
+coverage
+pnpm-lock.yaml
+
+# Preserve specification documents and permanent operating rules
+plan/
+.agents/
+AGENTS.md
+ANTIGRAVITY_SETUP.md
+README.md
