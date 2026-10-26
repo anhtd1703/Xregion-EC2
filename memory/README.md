@@ -9,3 +9,4 @@ Thư mục này lưu trữ tài liệu bộ nhớ dự án, ghi nhận tiến đ
 | Tài liệu | Giai đoạn | Nội dung tóm tắt | Trạng thái |
 |---|---|---|---|
 | [PHASE_0_COMPLETION_REPORT.md](./PHASE_0_COMPLETION_REPORT.md) | **Phase 0** | Khởi tạo dự án, monorepo, packages/contracts, backend mock providers, dashboard Nuxt 4, 17 unit tests, verification gates. | ✅ Hoàn thành |
+| [PHASE_1_COMPLETION_REPORT.md](./PHASE_1_COMPLETION_REPORT.md) | **Phase 1** | App shell, dark design system, responsive navigation, reusable UI components, login UI, overview dashboard, deterministic mocks & Nuxt API routes. | ✅ Hoàn thành |

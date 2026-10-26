@@ -21,10 +21,23 @@ export interface ApiRequestOptions {
 
 export function useApi() {
   const config = useRuntimeConfig()
-  const baseUrl = config.public.apiBaseUrl || '/api/v1'
+  const rawBase = config.public.apiBaseUrl as string | undefined
+  // Fall back to same-origin /api/v1 if not configured or if targeting legacy 8787 port
+  const baseUrl =
+    !rawBase || rawBase.includes('localhost:8787') || rawBase.includes('127.0.0.1:8787')
+      ? '/api/v1'
+      : rawBase
 
   async function request<T>(endpoint: string, options: ApiRequestOptions = {}): Promise<T> {
-    const url = endpoint.startsWith('http') ? endpoint : `${baseUrl}${endpoint}`
+    const cleanBase = (baseUrl || '/api/v1').replace(/\/+$/, '')
+    let path = endpoint
+    if (path.startsWith(cleanBase)) {
+      path = path.slice(cleanBase.length)
+    } else if (cleanBase.endsWith('/api/v1') && path.startsWith('/api/v1')) {
+      path = path.slice('/api/v1'.length)
+    }
+    const cleanPath = path.startsWith('/') ? path : `/${path}`
+    const url = endpoint.startsWith('http') ? endpoint : `${cleanBase}${cleanPath}`
 
     try {
       const response = await $fetch<ApiResponse<T>>(url, {

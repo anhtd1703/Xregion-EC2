@@ -11,6 +11,22 @@ export class MigrationRepository {
   private seed(): void {
     const defaultMigrations: Migration[] = [
       {
+        id: 'mig-active-01',
+        instanceId: 'vm-prod-04',
+        scenarioId: 'scen-nightly-01',
+        sourceRegion: 'REGION_A',
+        destinationRegion: 'REGION_B',
+        trigger: 'SCHEDULED',
+        status: 'IN_PROGRESS',
+        step: 'COPY_SNAPSHOT',
+        progress: 45,
+        autoUpdateDns: true,
+        rollbackOnFailure: true,
+        startedAt: '2026-03-15T02:00:00Z',
+        createdAt: '2026-03-15T02:00:00Z',
+        updatedAt: '2026-03-15T02:05:00Z'
+      },
+      {
         id: 'mig-history-01',
         instanceId: 'vm-staging-01',
         sourceRegion: 'REGION_A',
