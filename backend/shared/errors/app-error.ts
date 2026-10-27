@@ -48,6 +48,13 @@ export class ConflictError extends AppError {
   }
 }
 
+export class InvalidStateError extends AppError {
+  constructor(message: string, code: ErrorCode = ErrorCode.INSTANCE_INVALID_STATE) {
+    super(code, message, 409)
+    this.name = 'InvalidStateError'
+  }
+}
+
 export class ProviderUnavailableError extends AppError {
   constructor(message = 'Provider service is temporarily unavailable') {
     super(ErrorCode.PROVIDER_UNAVAILABLE, message, 503)

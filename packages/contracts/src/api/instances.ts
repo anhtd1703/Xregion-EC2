@@ -14,6 +14,9 @@ export interface CreateInstanceRequest {
   vcpu: number
   memoryMb: number
   diskGb: number
+  flavorId?: string
+  subnetId?: string
+  securityGroupId?: string
 }
 
 export interface InstanceActionResponse {

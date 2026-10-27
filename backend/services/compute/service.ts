@@ -40,7 +40,7 @@ export class ComputeService {
   }
 
   async createInstance(input: CreateInstanceRequest): Promise<Instance> {
-    if (!input.name || !input.region || !input.imageId) {
+    if (!input || !input.name || !input.region || !input.imageId) {
       throw new ValidationError('Name, region, and imageId are required fields')
     }
     const created = await this.repository.create(input)

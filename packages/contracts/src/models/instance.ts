@@ -11,6 +11,24 @@ export interface Region {
 
 export type InstanceStatus = 'CREATING' | 'RUNNING' | 'STOPPED' | 'MIGRATING' | 'ERROR' | 'DELETING'
 
+export interface ComputeFlavor {
+  id: string
+  name: string
+  vcpu: number
+  memoryMb: number
+  hourlyPrice: number
+  description: string
+}
+
+export interface OsImage {
+  id: string
+  name: string
+  osType: 'ubuntu' | 'debian' | 'cirros'
+  version: string
+  minDiskGb: number
+  description: string
+}
+
 export interface Instance {
   id: string
   name: string
@@ -24,6 +42,10 @@ export interface Instance {
   vcpu: number
   memoryMb: number
   diskGb: number
+
+  flavorId?: string
+  subnetId?: string
+  securityGroup?: string
 
   privateIp?: string
   publicIp?: string

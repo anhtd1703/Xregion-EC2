@@ -8,10 +8,21 @@ import { MockMetricsProvider } from './mock-metrics.provider.js'
 import { MockSnapshotProvider } from './mock-snapshot.provider.js'
 import type { SnapshotProvider } from './snapshot.provider.js'
 
-let computeProviderInstance: ComputeProvider | null = null
-let snapshotProviderInstance: SnapshotProvider | null = null
-let dnsProviderInstance: DnsProvider | null = null
-let metricsProviderInstance: MetricsProvider | null = null
+interface GlobalMockStorage {
+  __xregion_compute_provider__?: ComputeProvider
+  __xregion_snapshot_provider__?: SnapshotProvider
+  __xregion_dns_provider__?: DnsProvider
+  __xregion_metrics_provider__?: MetricsProvider
+}
+
+const g = globalThis as unknown as GlobalMockStorage
+
+export function resetMockProviders(): void {
+  g.__xregion_compute_provider__ = undefined
+  g.__xregion_snapshot_provider__ = undefined
+  g.__xregion_dns_provider__ = undefined
+  g.__xregion_metrics_provider__ = undefined
+}
 
 export function getProviderMode(): 'mock' | 'real' {
   const mode = process.env.XREGION_PROVIDER_MODE?.toLowerCase()
@@ -24,10 +35,10 @@ export function getComputeProvider(): ComputeProvider {
       'Real infrastructure ComputeProvider is scheduled for Phase 7'
     )
   }
-  if (!computeProviderInstance) {
-    computeProviderInstance = new MockComputeProvider()
+  if (!g.__xregion_compute_provider__) {
+    g.__xregion_compute_provider__ = new MockComputeProvider()
   }
-  return computeProviderInstance
+  return g.__xregion_compute_provider__
 }
 
 export function getSnapshotProvider(): SnapshotProvider {
@@ -36,20 +47,20 @@ export function getSnapshotProvider(): SnapshotProvider {
       'Real infrastructure SnapshotProvider is scheduled for Phase 7'
     )
   }
-  if (!snapshotProviderInstance) {
-    snapshotProviderInstance = new MockSnapshotProvider()
+  if (!g.__xregion_snapshot_provider__) {
+    g.__xregion_snapshot_provider__ = new MockSnapshotProvider()
   }
-  return snapshotProviderInstance
+  return g.__xregion_snapshot_provider__
 }
 
 export function getDnsProvider(): DnsProvider {
   if (getProviderMode() === 'real') {
     throw new ProviderUnavailableError('Real infrastructure DnsProvider is scheduled for Phase 7')
   }
-  if (!dnsProviderInstance) {
-    dnsProviderInstance = new MockDnsProvider()
+  if (!g.__xregion_dns_provider__) {
+    g.__xregion_dns_provider__ = new MockDnsProvider()
   }
-  return dnsProviderInstance
+  return g.__xregion_dns_provider__
 }
 
 export function getMetricsProvider(): MetricsProvider {
@@ -58,8 +69,8 @@ export function getMetricsProvider(): MetricsProvider {
       'Real infrastructure MetricsProvider is scheduled for Phase 7'
     )
   }
-  if (!metricsProviderInstance) {
-    metricsProviderInstance = new MockMetricsProvider()
+  if (!g.__xregion_metrics_provider__) {
+    g.__xregion_metrics_provider__ = new MockMetricsProvider()
   }
-  return metricsProviderInstance
+  return g.__xregion_metrics_provider__
 }

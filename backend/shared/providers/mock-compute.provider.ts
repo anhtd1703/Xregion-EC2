@@ -1,5 +1,5 @@
 import type { CreateInstanceRequest, Instance } from '@xregion/contracts'
-import { NotFoundError } from '../errors/app-error.js'
+import { InvalidStateError, NotFoundError } from '../errors/app-error.js'
 import type { ComputeProvider, ListInstancesFilters } from './compute.provider.js'
 
 export class MockComputeProvider implements ComputeProvider {
@@ -133,14 +133,14 @@ export class MockComputeProvider implements ComputeProvider {
         id: 'vm-dev-01',
         name: 'dev-sandbox-environment',
         status: 'STOPPED',
-        region: 'REGION_A',
+        region: 'REGION_B',
         imageId: 'img-debian-12',
         imageName: 'Debian 12 Bookworm',
         vcpu: 1,
         memoryMb: 2048,
         diskGb: 15,
-        privateIp: '10.0.1.210',
-        publicIp: '54.251.10.210',
+        privateIp: '10.1.1.210',
+        publicIp: '3.80.12.210',
         estimatedHourlyCost: 0.025,
         createdAt: '2026-03-11T08:00:00Z',
         updatedAt: '2026-03-11T08:00:00Z'
@@ -183,19 +183,47 @@ export class MockComputeProvider implements ComputeProvider {
 
   async createInstance(input: CreateInstanceRequest): Promise<Instance> {
     const id = `vm-${Date.now().toString(36)}`
+    const imageNames: Record<string, string> = {
+      'img-ubuntu-24': 'Ubuntu 24.04 LTS',
+      'img-ubuntu-22': 'Ubuntu 22.04 LTS',
+      'img-debian-12': 'Debian 12 Bookworm',
+      'img-cirros-06': 'CirrOS 0.6.2'
+    }
+
+    const imageName = imageNames[input.imageId] || 'Ubuntu 24.04 LTS'
+    const octet = Math.floor(Math.random() * 200) + 20
+    const isRegionA = input.region === 'REGION_A'
+    const privateIp = isRegionA ? `10.0.2.${octet}` : `10.1.2.${octet}`
+    const publicIp = isRegionA ? `54.251.20.${octet}` : `3.80.20.${octet}`
+    const endpoint = `https://${input.name.toLowerCase().replace(/[^a-z0-9-]/g, '-')}.${isRegionA ? 'sg' : 'us'}.xregion.internal`
+
+    // Rough hourly rate: $0.018 per vCPU + $0.005 per GB RAM + $0.00014 per GB disk
+    const hourlyCost =
+      Math.round(
+        (input.vcpu * 0.018 + (input.memoryMb / 1024) * 0.005 + input.diskGb * 0.00014) * 1000
+      ) / 1000
+
     const newInstance: Instance = {
       id,
       name: input.name,
       status: 'RUNNING',
       region: input.region,
       imageId: input.imageId,
-      imageName: 'Ubuntu 24.04 LTS',
+      imageName,
       vcpu: input.vcpu,
       memoryMb: input.memoryMb,
       diskGb: input.diskGb,
-      privateIp: '10.0.2.55',
-      publicIp: '54.251.20.10',
-      estimatedHourlyCost: 0.05,
+      flavorId:
+        input.flavorId ||
+        (input.vcpu >= 4 ? 'm6i.xlarge' : input.vcpu >= 2 ? 't4g.medium' : 't4g.small'),
+      subnetId:
+        input.subnetId ||
+        (isRegionA ? 'subnet-priv-01 (10.0.1.0/24)' : 'subnet-dr-01 (10.1.1.0/24)'),
+      securityGroup: input.securityGroupId || 'sg-web-default',
+      privateIp,
+      publicIp,
+      endpoint,
+      estimatedHourlyCost: hourlyCost,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
@@ -205,6 +233,15 @@ export class MockComputeProvider implements ComputeProvider {
 
   async startInstance(id: string): Promise<void> {
     const inst = await this.getInstance(id)
+    if (inst.status === 'RUNNING') {
+      throw new InvalidStateError(`Cannot start instance ${id}: already RUNNING`)
+    }
+    if (inst.status === 'MIGRATING') {
+      throw new InvalidStateError(`Cannot start instance ${id}: currently MIGRATING`)
+    }
+    if (inst.status === 'DELETING') {
+      throw new InvalidStateError(`Cannot start instance ${id}: currently DELETING`)
+    }
     inst.status = 'RUNNING'
     inst.updatedAt = new Date().toISOString()
     this.instances.set(id, inst)
@@ -212,6 +249,15 @@ export class MockComputeProvider implements ComputeProvider {
 
   async stopInstance(id: string): Promise<void> {
     const inst = await this.getInstance(id)
+    if (inst.status === 'STOPPED') {
+      throw new InvalidStateError(`Cannot stop instance ${id}: already STOPPED`)
+    }
+    if (inst.status === 'MIGRATING') {
+      throw new InvalidStateError(`Cannot stop instance ${id}: currently MIGRATING`)
+    }
+    if (inst.status === 'DELETING') {
+      throw new InvalidStateError(`Cannot stop instance ${id}: currently DELETING`)
+    }
     inst.status = 'STOPPED'
     inst.updatedAt = new Date().toISOString()
     this.instances.set(id, inst)
@@ -219,14 +265,26 @@ export class MockComputeProvider implements ComputeProvider {
 
   async restartInstance(id: string): Promise<void> {
     const inst = await this.getInstance(id)
+    if (inst.status === 'STOPPED') {
+      throw new InvalidStateError(
+        `Cannot restart instance ${id}: currently STOPPED (start it instead)`
+      )
+    }
+    if (inst.status === 'MIGRATING') {
+      throw new InvalidStateError(`Cannot restart instance ${id}: currently MIGRATING`)
+    }
+    if (inst.status === 'DELETING') {
+      throw new InvalidStateError(`Cannot restart instance ${id}: currently DELETING`)
+    }
     inst.status = 'RUNNING'
     inst.updatedAt = new Date().toISOString()
     this.instances.set(id, inst)
   }
 
   async deleteInstance(id: string): Promise<void> {
-    if (!this.instances.has(id)) {
-      throw new NotFoundError(`Instance ${id} not found`)
+    const inst = await this.getInstance(id)
+    if (inst.status === 'MIGRATING') {
+      throw new InvalidStateError(`Cannot delete instance ${id}: currently MIGRATING`)
     }
     this.instances.delete(id)
   }
