@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import type { Instance } from '@xregion/contracts'
+import type { Instance, Snapshot } from '@xregion/contracts'
 import { useInstancesApi } from '../../composables/useInstancesApi.js'
+import { useSnapshotsApi } from '../../composables/useSnapshotsApi.js'
+import CopySnapshotModal from '../../components/snapshots/CopySnapshotModal.vue'
+import CreateSnapshotModal from '../../components/snapshots/CreateSnapshotModal.vue'
 
 const route = useRoute()
 const router = useRouter()
 const instancesApi = useInstancesApi()
+const snapshotsApi = useSnapshotsApi()
 
 const instanceId = computed(() => route.params.id as string)
 useHead({ title: computed(() => `Instance ${instanceId.value} — XRegion-EC2`) })
@@ -17,6 +21,16 @@ const error = ref<string | null>(null)
 const activeTab = ref<
   'overview' | 'monitoring' | 'storage' | 'networking' | 'snapshots' | 'activity'
 >('overview')
+
+// Snapshots State for this instance
+const snapshots = ref<Snapshot[]>([])
+const loadingSnapshots = ref(false)
+const showCreateSnapshotModal = ref(false)
+const showCopySnapshotModal = ref(false)
+const activeSnapshotToCopy = ref<Snapshot | null>(null)
+const showDeleteSnapshotConfirm = ref(false)
+const activeSnapshotToDelete = ref<Snapshot | null>(null)
+const snapshotActionLoading = ref(false)
 
 // Notification toast
 const toastMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -44,6 +58,67 @@ async function fetchInstance() {
     loading.value = false
   }
 }
+
+// Fetch snapshots for this instance
+async function fetchSnapshots() {
+  if (!instanceId.value) return
+  loadingSnapshots.value = true
+  try {
+    const data = await snapshotsApi.listSnapshots({ instanceId: instanceId.value })
+    snapshots.value = data
+  } catch {
+    // Non-blocking for instance view
+  } finally {
+    loadingSnapshots.value = false
+  }
+}
+
+// Snapshot Actions
+function handleSnapshotCreated(created: Snapshot) {
+  showToast(`Snapshot ${created.name} created successfully`, 'success')
+  fetchSnapshots()
+}
+
+function handleOpenCopySnapshot(snap: Snapshot) {
+  activeSnapshotToCopy.value = snap
+  showCopySnapshotModal.value = true
+}
+
+function handleSnapshotCopied(copied: Snapshot) {
+  showToast(
+    `Snapshot replicated to ${copied.region === 'REGION_A' ? 'Singapore' : 'N. Virginia'} successfully`,
+    'success'
+  )
+  fetchSnapshots()
+}
+
+function handleOpenDeleteSnapshot(snap: Snapshot) {
+  activeSnapshotToDelete.value = snap
+  showDeleteSnapshotConfirm.value = true
+}
+
+async function executeSnapshotDelete() {
+  if (!activeSnapshotToDelete.value) return
+  snapshotActionLoading.value = true
+  try {
+    await snapshotsApi.deleteSnapshot(activeSnapshotToDelete.value.id)
+    showToast(`Snapshot ${activeSnapshotToDelete.value.name} deleted successfully`, 'success')
+    showDeleteSnapshotConfirm.value = false
+    await fetchSnapshots()
+  } catch (err: unknown) {
+    const e = err as { message?: string }
+    showToast(e?.message || 'Failed to delete snapshot', 'error')
+  } finally {
+    snapshotActionLoading.value = false
+  }
+}
+
+// Watch active tab to refresh snapshots on demand
+watch(activeTab, (tab) => {
+  if (tab === 'snapshots' || tab === 'storage') {
+    fetchSnapshots()
+  }
+})
 
 // Lifecycle actions
 async function handleStart() {
@@ -124,6 +199,7 @@ const showMigrateModal = ref(false)
 
 onMounted(() => {
   fetchInstance()
+  fetchSnapshots()
 })
 </script>
 
@@ -478,30 +554,76 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 3. STORAGE TAB (Placeholder connected to Phase 3) -->
-      <div
-        v-else-if="activeTab === 'storage'"
-        class="p-8 rounded-2xl border border-slate-800 bg-slate-900/40 text-center space-y-4"
-      >
-        <div
-          class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center mx-auto"
-        >
-          <UIcon name="i-lucide-hard-drive" class="w-6 h-6" />
-        </div>
-        <div>
-          <h3 class="text-base font-semibold text-white">EBS Volumes & Storage Attachments</h3>
-          <p class="text-xs text-slate-400 max-w-md mx-auto mt-1">
-            Root Volume:
-            <span class="font-mono text-slate-200"
-              >vol-root-{{ instance.id }} ({{ instance.diskGb }} GB, gp3 SSD)</span
-            >. Volume snapshot policies, point-in-time recovery, and cross-region volume
-            synchronization will be fully managed in Phase 3.
-          </p>
-        </div>
-        <div
-          class="p-4 rounded-xl bg-slate-800/40 border border-slate-800 max-w-sm mx-auto text-xs text-slate-400"
-        >
-          <span class="text-indigo-400 font-medium">Scheduled:</span> Phase 3 Snapshot Management
+      <!-- 3. STORAGE TAB (Phase 3 Implemented) -->
+      <div v-else-if="activeTab === 'storage'" class="space-y-6">
+        <div class="p-6 rounded-2xl border border-slate-800 bg-slate-900/50 space-y-5">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-hard-drive" class="w-5 h-5 text-indigo-400" />
+              <h3 class="text-sm font-semibold text-white uppercase tracking-wider">
+                Root Block Device & Storage Configuration
+              </h3>
+            </div>
+            <UButton
+              color="primary"
+              variant="outline"
+              size="xs"
+              icon="i-lucide-camera"
+              @click="showCreateSnapshotModal = true"
+            >
+              Take Snapshot
+            </UButton>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-800 space-y-2">
+              <div class="text-slate-400 font-medium">Volume Identification</div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500">Device ID:</span>
+                <span class="font-mono text-slate-200">vol-root-{{ instance.id }}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500">Device Name:</span>
+                <span class="font-mono text-slate-200">/dev/xvda (Root / OS)</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500">Attachment:</span>
+                <span class="text-emerald-400 font-medium">Attached (Root Volume)</span>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-xl bg-slate-800/40 border border-slate-800 space-y-2">
+              <div class="text-slate-400 font-medium">Volume Performance & Characteristics</div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500">Storage Size:</span>
+                <span class="font-mono text-emerald-400 font-semibold"
+                  >{{ instance.diskGb }} GB</span
+                >
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500">Volume Type:</span>
+                <span class="text-slate-200 font-medium">gp3 General Purpose SSD</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-500">Baseline IOPS / Bandwidth:</span>
+                <span class="font-mono text-slate-300">3,000 IOPS / 125 MB/s</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="p-3.5 rounded-xl bg-slate-800/30 border border-slate-800 text-xs text-slate-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+          >
+            <div class="flex items-center gap-2">
+              <UIcon name="i-lucide-shield-check" class="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Encryption Status: AWS-KMS Managed Envelope Encryption (gp3 root device)</span>
+            </div>
+            <NuxtLink to="/snapshots">
+              <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-external-link">
+                View All Snapshots
+              </UButton>
+            </NuxtLink>
+          </div>
         </div>
       </div>
 
@@ -530,28 +652,115 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 5. SNAPSHOTS TAB (Placeholder connected to Phase 3) -->
-      <div
-        v-else-if="activeTab === 'snapshots'"
-        class="p-8 rounded-2xl border border-slate-800 bg-slate-900/40 text-center space-y-4"
-      >
-        <div
-          class="w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center mx-auto"
-        >
-          <UIcon name="i-lucide-camera" class="w-6 h-6" />
-        </div>
-        <div>
-          <h3 class="text-base font-semibold text-white">EBS Snapshot Schedules</h3>
-          <p class="text-xs text-slate-400 max-w-md mx-auto mt-1">
-            Automated snapshot schedules, cross-region replication to
-            {{ instance.region === 'REGION_A' ? 'us-east-1' : 'ap-southeast-1' }}, and fast restore
-            will be managed in Phase 3.
-          </p>
-        </div>
-        <div
-          class="p-4 rounded-xl bg-slate-800/40 border border-slate-800 max-w-sm mx-auto text-xs text-slate-400"
-        >
-          <span class="text-indigo-400 font-medium">Scheduled:</span> Phase 3 Snapshot Management
+      <!-- 5. SNAPSHOTS TAB (Phase 3 Implemented) -->
+      <div v-else-if="activeTab === 'snapshots'" class="space-y-6">
+        <div class="p-6 rounded-2xl border border-slate-800 bg-slate-900/50 space-y-4">
+          <div
+            class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800"
+          >
+            <div>
+              <h3 class="text-sm font-semibold text-white uppercase tracking-wider">
+                Instance Volume Snapshots
+              </h3>
+              <p class="text-xs text-slate-400 mt-0.5">
+                Point-in-time storage captures available for cross-region disaster recovery
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <UButton
+                color="neutral"
+                variant="outline"
+                size="xs"
+                icon="i-lucide-refresh-cw"
+                :loading="loadingSnapshots"
+                @click="fetchSnapshots"
+              >
+                Refresh
+              </UButton>
+              <UButton
+                color="primary"
+                variant="solid"
+                size="xs"
+                icon="i-lucide-camera"
+                @click="showCreateSnapshotModal = true"
+              >
+                Create Snapshot
+              </UButton>
+            </div>
+          </div>
+
+          <!-- Loading Skeleton -->
+          <CommonLoadingSkeleton v-if="loadingSnapshots" variant="table" :rows="2" />
+
+          <!-- Empty State -->
+          <CommonEmptyState
+            v-else-if="snapshots.length === 0"
+            title="No Snapshots for this Instance"
+            description="Take a snapshot of this instance root volume to enable fast restore and cross-region replication."
+            action-label="Create Snapshot"
+            icon="i-lucide-camera"
+            @action="showCreateSnapshotModal = true"
+          />
+
+          <!-- Snapshots Table -->
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-left text-xs divide-y divide-slate-800">
+              <thead class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <tr>
+                  <th class="py-2.5 px-3">Name & ID</th>
+                  <th class="py-2.5 px-3">Region</th>
+                  <th class="py-2.5 px-3">Status</th>
+                  <th class="py-2.5 px-3">Size</th>
+                  <th class="py-2.5 px-3">Created</th>
+                  <th class="py-2.5 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60">
+                <tr
+                  v-for="snap in snapshots"
+                  :key="snap.id"
+                  class="hover:bg-slate-800/30 transition-colors"
+                >
+                  <td class="py-3 px-3">
+                    <div class="font-medium text-white">{{ snap.name }}</div>
+                    <div class="font-mono text-[11px] text-slate-500">{{ snap.id }}</div>
+                  </td>
+                  <td class="py-3 px-3">
+                    <CommonRegionBadge :region="snap.region" show-details />
+                  </td>
+                  <td class="py-3 px-3">
+                    <CommonStatusBadge :status="snap.status" size="sm" />
+                  </td>
+                  <td class="py-3 px-3 font-mono text-emerald-400">{{ snap.sizeGb }} GB</td>
+                  <td class="py-3 px-3 font-mono text-slate-400 text-[11px]">
+                    {{ new Date(snap.createdAt).toLocaleString() }}
+                  </td>
+                  <td class="py-3 px-3 text-right">
+                    <div class="flex items-center justify-end gap-1.5">
+                      <UButton
+                        color="neutral"
+                        variant="outline"
+                        size="xs"
+                        icon="i-lucide-copy"
+                        :disabled="snap.status !== 'AVAILABLE'"
+                        @click="handleOpenCopySnapshot(snap)"
+                      >
+                        Copy
+                      </UButton>
+                      <UButton
+                        color="error"
+                        variant="ghost"
+                        size="xs"
+                        icon="i-lucide-trash-2"
+                        :disabled="snap.status === 'COPYING' || snap.status === 'CREATING'"
+                        @click="handleOpenDeleteSnapshot(snap)"
+                      />
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -683,5 +892,31 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <!-- Create Snapshot Modal for this instance -->
+    <CreateSnapshotModal
+      v-model="showCreateSnapshotModal"
+      :instance="instance"
+      @created="handleSnapshotCreated"
+    />
+
+    <!-- Copy Snapshot Modal -->
+    <CopySnapshotModal
+      v-model="showCopySnapshotModal"
+      :snapshot="activeSnapshotToCopy"
+      @copied="handleSnapshotCopied"
+    />
+
+    <!-- Delete Snapshot Confirmation Dialog -->
+    <CommonConfirmDialog
+      v-model="showDeleteSnapshotConfirm"
+      title="Delete Snapshot"
+      :description="`Are you sure you want to permanently delete snapshot '${activeSnapshotToDelete?.name}' (${activeSnapshotToDelete?.id})?`"
+      confirm-label="Delete Snapshot"
+      :danger="true"
+      :loading="snapshotActionLoading"
+      @confirm="executeSnapshotDelete"
+      @cancel="showDeleteSnapshotConfirm = false"
+    />
   </div>
 </template>

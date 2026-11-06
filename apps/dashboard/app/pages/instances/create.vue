@@ -1,17 +1,28 @@
 <script setup lang="ts">
-import type { CreateInstanceRequest, RegionId } from '@xregion/contracts'
+import {
+  DEFAULT_OS_IMAGES,
+  type CreateInstanceRequest,
+  type OsImage,
+  type RegionId
+} from '@xregion/contracts'
+import { useImagesApi } from '../../composables/useImagesApi.js'
 import { useInstancesApi } from '../../composables/useInstancesApi.js'
 
 useHead({ title: 'Launch Instance — XRegion-EC2' })
 
+const route = useRoute()
 const router = useRouter()
 const instancesApi = useInstancesApi()
+const imagesApi = useImagesApi()
+
+// Shared images catalog with deterministic contract default
+const images = ref<OsImage[]>([...DEFAULT_OS_IMAGES])
 
 // Form Data State
 const form = reactive({
   name: '',
   region: 'REGION_A' as RegionId,
-  imageId: 'img-ubuntu-24',
+  imageId: route.query.imageId?.toString() || 'img-ubuntu-24',
   flavorId: 't4g.medium',
   diskGb: 30,
   subnetId: 'subnet-priv-01',
@@ -22,46 +33,16 @@ const form = reactive({
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 
-// Mock Images catalog
-const images = [
-  {
-    id: 'img-ubuntu-24',
-    name: 'Ubuntu 24.04 LTS',
-    osType: 'ubuntu',
-    version: 'Noble Numbat',
-    minDiskGb: 20,
-    icon: 'i-lucide-box',
-    badge: 'Recommended',
-    description: 'Latest Ubuntu LTS release with Kernel 6.8 & systemd 255'
-  },
-  {
-    id: 'img-ubuntu-22',
-    name: 'Ubuntu 22.04 LTS',
-    osType: 'ubuntu',
-    version: 'Jammy Jellyfish',
-    minDiskGb: 20,
-    icon: 'i-lucide-box',
-    description: 'Stable long-term support release for production workloads'
-  },
-  {
-    id: 'img-debian-12',
-    name: 'Debian 12 Bookworm',
-    osType: 'debian',
-    version: 'Bookworm 12.5',
-    minDiskGb: 15,
-    icon: 'i-lucide-server',
-    description: 'Universal operating system known for rock-solid stability'
-  },
-  {
-    id: 'img-cirros-06',
-    name: 'CirrOS 0.6.2',
-    osType: 'cirros',
-    version: 'Minimal 0.6.2',
-    minDiskGb: 5,
-    icon: 'i-lucide-cpu',
-    description: 'Ultra-lightweight Linux test image for rapid DR validation'
+onMounted(async () => {
+  try {
+    const fetched = await imagesApi.listImages()
+    if (fetched && fetched.length > 0) {
+      images.value = fetched
+    }
+  } catch {
+    // Keep deterministic defaults
   }
-]
+})
 
 // Mock Flavors catalog
 const flavors = [
@@ -142,7 +123,7 @@ const selectedFlavor = computed(() => {
 
 // Selected image details
 const selectedImage = computed(() => {
-  return images.find((img) => img.id === form.imageId) || images[0]
+  return images.value.find((img) => img.id === form.imageId) || images.value[0]
 })
 
 // Cost calculations

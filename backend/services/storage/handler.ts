@@ -1,4 +1,9 @@
-import type { CopySnapshotRequest, CreateSnapshotRequest } from '@xregion/contracts'
+import type {
+  CopySnapshotRequest,
+  CreateSnapshotRequest,
+  RegionId,
+  SnapshotStatus
+} from '@xregion/contracts'
 import { createErrorResult, createSuccessResult } from '../../shared/http/response.js'
 import type { ApiGatewayEvent, ApiGatewayResult } from '../../shared/http/types.js'
 import { createLogger } from '../../shared/logging/logger.js'
@@ -16,16 +21,36 @@ export async function handler(event: ApiGatewayEvent): Promise<ApiGatewayResult>
     const pathParams = event.pathParameters || {}
     const id = pathParams.id
 
+    // GET /images
+    if (method === 'GET' && path.endsWith('/images')) {
+      const images = await storageService.listImages()
+      return createSuccessResult(images, requestId)
+    }
+
+    // GET /snapshots/{id}
+    if (method === 'GET' && id && !path.endsWith('/snapshots')) {
+      const snap = await storageService.getSnapshot(id)
+      return createSuccessResult(snap, requestId)
+    }
+
     // GET /snapshots
     if (method === 'GET' && (!id || path.endsWith('/snapshots'))) {
-      const instanceId = event.queryStringParameters?.instanceId
-      const items = await storageService.listSnapshots(instanceId)
+      const q = event.queryStringParameters || {}
+      const items = await storageService.listSnapshots({
+        instanceId: q.instanceId,
+        region: q.region as RegionId | undefined,
+        status: q.status as SnapshotStatus | undefined,
+        search: q.search
+      })
       return createSuccessResult(items, requestId)
     }
 
     // POST /instances/{id}/snapshots or POST /snapshots
     if (method === 'POST' && path.endsWith('/snapshots')) {
       const payload: CreateSnapshotRequest = event.body ? JSON.parse(event.body) : {}
+      if (id && !payload.instanceId) {
+        payload.instanceId = id
+      }
       const created = await storageService.createSnapshot(payload)
       return createSuccessResult(created, requestId, 201)
     }

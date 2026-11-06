@@ -27,6 +27,10 @@ export interface OsImage {
   version: string
   minDiskGb: number
   description: string
+  architecture?: string
+  regions?: RegionId[]
+  icon?: string
+  badge?: string
 }
 
 export interface Instance {

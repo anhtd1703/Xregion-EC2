@@ -1,22 +1,30 @@
-import type { RegionId, Snapshot } from '@xregion/contracts'
-import type { SnapshotProvider } from '../../shared/providers/snapshot.provider.js'
+import type { OsImage, RegionId, Snapshot } from '@xregion/contracts'
 import { getSnapshotProvider } from '../../shared/providers/provider-factory.js'
+import type {
+  CreateSnapshotParams,
+  ListSnapshotsFilters,
+  SnapshotProvider
+} from '../../shared/providers/snapshot.provider.js'
 
 export class StorageRepository {
   private get provider(): SnapshotProvider {
     return getSnapshotProvider()
   }
 
-  async list(instanceId?: string): Promise<Snapshot[]> {
-    return this.provider.listSnapshots(instanceId)
+  async listImages(): Promise<OsImage[]> {
+    return this.provider.listImages()
+  }
+
+  async list(filters?: ListSnapshotsFilters | string): Promise<Snapshot[]> {
+    return this.provider.listSnapshots(filters)
   }
 
   async findById(id: string): Promise<Snapshot> {
     return this.provider.getSnapshot(id)
   }
 
-  async create(instanceId: string, sizeGb?: number): Promise<Snapshot> {
-    return this.provider.createSnapshot(instanceId, sizeGb)
+  async create(params: CreateSnapshotParams | string, sizeGb?: number): Promise<Snapshot> {
+    return this.provider.createSnapshot(params, sizeGb)
   }
 
   async copy(id: string, destinationRegion: RegionId): Promise<Snapshot> {
